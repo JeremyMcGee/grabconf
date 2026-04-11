@@ -115,11 +115,10 @@ if (tracker is not null && options.ManifestPath is not null)
 
 return 0;
 
-static string SanitizeFileName(string name)
+static string SanitizeName(string name, int maxLength)
 {
-    const int maxLength = 15;
-    const int prefixLength = 10;
     const int hashLength = 4;
+    var prefixLength = maxLength - hashLength - 1;
 
     var invalid = Path.GetInvalidFileNameChars();
     var sanitized = string.Concat(name.Select(c => invalid.Contains(c) ? '_' : c));
@@ -132,11 +131,15 @@ static string SanitizeFileName(string name)
     return $"{sanitized[..prefixLength]}_{hash}";
 }
 
+static string SanitizeFileName(string name) => SanitizeName(name, maxLength: 20);
+
+static string SanitizeFolderName(string name) => SanitizeName(name, maxLength: 10);
+
 static string BuildPageDirectory(string outputDir, IReadOnlyList<string> ancestorTitles)
 {
     var path = outputDir;
     foreach (var ancestor in ancestorTitles)
-        path = Path.Combine(path, SanitizeFileName(ancestor));
+        path = Path.Combine(path, SanitizeFolderName(ancestor));
     return path;
 }
 
