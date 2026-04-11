@@ -19,7 +19,7 @@ public sealed class ConfluenceClient : IDisposable
 
     public ConfluenceClient(string baseUrl, string? user, string token, int maxRequestsPerSecond)
     {
-        _minDelay = TimeSpan.FromMilliseconds(1000.0 / maxRequestsPerSecond);
+        _minDelay = TimeSpan.FromMilliseconds(3000.0 / maxRequestsPerSecond);
 
         _http = new HttpClient
         {
