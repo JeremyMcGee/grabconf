@@ -16,6 +16,7 @@ public sealed partial class ExternalSiteTracker
 
     public void Scan(string html)
     {
+        var found = 0;
         foreach (Match match in HrefRegex().Matches(html))
         {
             var url = match.Groups[1].Value;
@@ -30,7 +31,12 @@ public sealed partial class ExternalSiteTracker
                 _siteCounts[siteBase] = count + 1;
             else
                 _siteCounts[siteBase] = 1;
+
+            found++;
         }
+
+        if (found > 0)
+            Log.Debug($"Found {found} external Confluence reference(s) in page.");
     }
 
     public void WriteManifest(string outputPath, string sourceBaseUrl, string spaceKey)
@@ -38,6 +44,8 @@ public sealed partial class ExternalSiteTracker
         var totalRefs = 0;
         foreach (var count in _siteCounts.Values)
             totalRefs += count;
+
+        Log.Debug($"Writing manifest: {_siteCounts.Count} site(s), {totalRefs} total reference(s)");
 
         using var writer = new StreamWriter(outputPath, append: false, encoding: System.Text.Encoding.UTF8);
         writer.WriteLine("External Confluence Sites Manifest");

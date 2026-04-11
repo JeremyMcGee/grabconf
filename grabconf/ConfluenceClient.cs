@@ -30,10 +30,12 @@ public sealed class ConfluenceClient : IDisposable
         {
             var credentials = Convert.ToBase64String(Encoding.ASCII.GetBytes($"{user}:{token}"));
             _http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", credentials);
+            Log.Debug("Using Basic Auth.");
         }
         else
         {
             _http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            Log.Debug("Using Bearer Token auth.");
         }
     }
 
@@ -46,11 +48,17 @@ public sealed class ConfluenceClient : IDisposable
         while (true)
         {
             var url = $"rest/api/content?spaceKey={Uri.EscapeDataString(spaceKey)}&type=page&expand=ancestors&start={start}&limit={limit}";
+            Log.Debug($"Fetching pages: start={start}, limit={limit}");
             var json = await GetJsonAsync(url, ct);
 
             var results = json.GetProperty("results");
             if (results.GetArrayLength() == 0)
+            {
+                Log.Debug("No more pages to fetch.");
                 break;
+            }
+
+            Log.Debug($"Received {results.GetArrayLength()} page(s) in this batch.");
 
             foreach (var page in results.EnumerateArray())
             {
@@ -78,6 +86,7 @@ public sealed class ConfluenceClient : IDisposable
 
     public async Task<string> GetSpaceNameAsync(string spaceKey, CancellationToken ct = default)
     {
+        Log.Debug($"Fetching space info for key '{spaceKey}'...");
         var url = $"rest/api/space/{Uri.EscapeDataString(spaceKey)}";
         var json = await GetJsonAsync(url, ct);
         return json.GetProperty("name").GetString() ?? spaceKey;
@@ -103,6 +112,7 @@ public sealed class ConfluenceClient : IDisposable
         while (true)
         {
             var url = $"rest/api/content/{Uri.EscapeDataString(pageId)}/child/attachment?start={start}&limit={limit}";
+            Log.Debug($"Fetching attachments: start={start}, limit={limit}");
             var json = await GetJsonAsync(url, ct);
 
             var results = json.GetProperty("results");
@@ -140,6 +150,7 @@ public sealed class ConfluenceClient : IDisposable
     {
         await ThrottleAsync(ct);
         var uri = new Uri(_http.BaseAddress!, downloadPath);
+        Log.Debug($"GET {uri}");
         var response = await _http.GetAsync(uri, ct);
         response.EnsureSuccessStatusCode();
         return await response.Content.ReadAsByteArrayAsync(ct);
@@ -154,6 +165,7 @@ public sealed class ConfluenceClient : IDisposable
     private async Task<JsonElement> GetJsonAsync(string relativeUrl, CancellationToken ct)
     {
         await ThrottleAsync(ct);
+        Log.Debug($"GET {relativeUrl}");
         var response = await _http.GetAsync(relativeUrl, ct);
         response.EnsureSuccessStatusCode();
         return await response.Content.ReadFromJsonAsync<JsonElement>(JsonOptions, ct);
@@ -166,7 +178,10 @@ public sealed class ConfluenceClient : IDisposable
         {
             var remaining = _minDelay - (DateTime.UtcNow - _lastRequest);
             if (remaining > TimeSpan.Zero)
+            {
+                Log.Debug($"Throttling: waiting {remaining.TotalMilliseconds:F0}ms");
                 await Task.Delay(remaining, ct);
+            }
             _lastRequest = DateTime.UtcNow;
         }
         finally

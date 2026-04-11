@@ -16,6 +16,7 @@ public sealed class WordExporter
         string htmlContent,
         List<DownloadedAttachment> attachments)
     {
+        Log.Debug($"Processing HTML images for '{title}'...");
         var processedHtml = ProcessHtmlImages(htmlContent, attachments);
 
         var nonImageAttachments = attachments
@@ -26,7 +27,9 @@ public sealed class WordExporter
         var attachmentsSection = BuildAttachmentsHtml(nonImageAttachments, attachmentsFolderName);
 
         var fullHtml = BuildFullHtml(title, spaceName, processedHtml, attachmentsSection);
+        Log.Debug($"Final HTML size: {fullHtml.Length:N0} characters");
 
+        Log.Debug($"Writing .docx to {outputPath}...");
         using var doc = WordprocessingDocument.Create(outputPath, WordprocessingDocumentType.Document);
         var mainPart = doc.AddMainDocumentPart();
 
@@ -94,8 +97,11 @@ public sealed class WordExporter
 
     private static string ProcessHtmlImages(string html, List<DownloadedAttachment> attachments)
     {
-        foreach (var att in attachments.Where(
-            a => a.MediaType.StartsWith("image/", StringComparison.OrdinalIgnoreCase)))
+        var imageAttachments = attachments.Where(
+            a => a.MediaType.StartsWith("image/", StringComparison.OrdinalIgnoreCase)).ToList();
+        Log.Debug($"Embedding {imageAttachments.Count} image(s) as base64 data URIs...");
+
+        foreach (var att in imageAttachments)
         {
             var base64 = Convert.ToBase64String(att.Data);
             var dataUri = $"data:{att.MediaType};base64,{base64}";
@@ -103,6 +109,7 @@ public sealed class WordExporter
             var escaped = Regex.Escape(att.FileName);
             var pattern = $@"src=""[^""]*?{escaped}[^""]*""";
             html = Regex.Replace(html, pattern, $@"src=""{dataUri}""", RegexOptions.IgnoreCase);
+            Log.Debug($"Embedded image: {att.FileName} ({att.Data.Length:N0} bytes)");
 
             var encodedName = Uri.EscapeDataString(att.FileName);
             if (encodedName != att.FileName)
@@ -125,11 +132,13 @@ public sealed class WordExporter
             Path.GetFileNameWithoutExtension(docPath) + "_attachments");
 
         Directory.CreateDirectory(dir);
+        Log.Debug($"Saving {attachments.Count} attachment(s) to {dir}");
 
         foreach (var att in attachments)
         {
             var filePath = Path.Combine(dir, att.FileName);
             File.WriteAllBytes(filePath, att.Data);
+            Log.Debug($"Saved attachment: {filePath} ({att.Data.Length:N0} bytes)");
         }
     }
 }

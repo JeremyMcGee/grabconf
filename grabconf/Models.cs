@@ -7,7 +7,8 @@ public sealed record CommandLineOptions(
     string Token,
     string OutputDir,
     int MaxRequestsPerSecond,
-    string? ManifestPath);
+    string? ManifestPath,
+    bool Verbose);
 
 public sealed record PageInfo(string Id, string Title, IReadOnlyList<string> AncestorTitles);
 
