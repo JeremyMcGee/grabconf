@@ -1,4 +1,6 @@
-﻿using GrabConf;
+﻿using System.Security.Cryptography;
+using System.Text;
+using GrabConf;
 using Spectre.Console;
 
 if (args.Length == 0 || args.Contains("--help") || args.Contains("-h"))
@@ -50,10 +52,23 @@ foreach (var page in pages)
     try
     {
         Log.Debug($"Fetching content for page '{page.Title}' (id={page.Id})...");
-        var content = await client.GetPageContentAsync(page.Id);
-        Log.Debug($"Content size: {content.Length:N0} characters");
+        var pageContent = await client.GetPageContentAsync(page.Id);
+        Log.Debug($"Content size: {pageContent.Html.Length:N0} characters");
 
-        tracker?.Scan(content);
+        tracker?.Scan(pageContent.Html);
+
+        Log.Debug($"Fetching view count for page '{page.Title}'...");
+        var viewCount = await client.GetPageViewCountAsync(page.Id);
+        var metadata = pageContent.Metadata with { ViewCount = viewCount };
+
+        if (Log.Verbose)
+        {
+            Log.Debug($"Creator: {metadata.CreatorName ?? "unknown"}");
+            Log.Debug($"Contributors: {(metadata.Contributors.Count > 0 ? string.Join(", ", metadata.Contributors) : "none")}");
+            Log.Debug($"Created: {metadata.CreatedDate?.ToString("yyyy-MM-dd HH:mm:ss") ?? "unknown"}");
+            Log.Debug($"Version: {metadata.VersionNumber}, Last updated: {metadata.LastUpdatedDate?.ToString("yyyy-MM-dd HH:mm:ss") ?? "unknown"}");
+            Log.Debug($"Views: {viewCount?.ToString() ?? "N/A"}");
+        }
 
         Log.Debug($"Fetching attachments for page '{page.Title}'...");
         var attachments = await client.GetAttachmentsAsync(page.Id);
@@ -74,7 +89,7 @@ foreach (var page in pages)
         var safeTitle = SanitizeFileName(page.Title);
         var docPath = Path.Combine(pageDir, $"{safeTitle}.docx");
         Log.Debug($"Creating document: {docPath}");
-        exporter.Export(docPath, page.Title, spaceName, content, downloaded);
+        exporter.Export(docPath, page.Title, spaceName, pageContent.Html, downloaded, metadata);
         Log.Success($"Saved: {docPath}");
     }
     catch (HttpRequestException ex)
@@ -102,9 +117,19 @@ return 0;
 
 static string SanitizeFileName(string name)
 {
+    const int maxLength = 15;
+    const int prefixLength = 10;
+    const int hashLength = 4;
+
     var invalid = Path.GetInvalidFileNameChars();
     var sanitized = string.Concat(name.Select(c => invalid.Contains(c) ? '_' : c));
-    return sanitized.Length > 200 ? sanitized[..200] : sanitized;
+
+    if (sanitized.Length <= maxLength)
+        return sanitized;
+
+    var hash = Convert.ToHexStringLower(
+        SHA256.HashData(Encoding.UTF8.GetBytes(sanitized)))[..hashLength];
+    return $"{sanitized[..prefixLength]}_{hash}";
 }
 
 static string BuildPageDirectory(string outputDir, IReadOnlyList<string> ancestorTitles)

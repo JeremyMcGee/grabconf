@@ -14,7 +14,8 @@ public sealed class WordExporter
         string title,
         string spaceName,
         string htmlContent,
-        List<DownloadedAttachment> attachments)
+        List<DownloadedAttachment> attachments,
+        PageMetadata metadata)
     {
         Log.Debug($"Processing HTML images for '{title}'...");
         var processedHtml = ProcessHtmlImages(htmlContent, attachments);
@@ -23,10 +24,10 @@ public sealed class WordExporter
             .Where(a => !a.MediaType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
             .ToList();
 
-        var attachmentsFolderName = Path.GetFileNameWithoutExtension(outputPath) + "_attachments";
+        var attachmentsFolderName = Path.GetFileNameWithoutExtension(outputPath) + "_att";
         var attachmentsSection = BuildAttachmentsHtml(nonImageAttachments, attachmentsFolderName);
 
-        var fullHtml = BuildFullHtml(title, spaceName, processedHtml, attachmentsSection);
+        var fullHtml = BuildFullHtml(title, spaceName, processedHtml, attachmentsSection, metadata);
         Log.Debug($"Final HTML size: {fullHtml.Length:N0} characters");
 
         Log.Debug($"Writing .docx to {outputPath}...");
@@ -51,11 +52,21 @@ public sealed class WordExporter
         SaveAttachments(outputPath, attachments);
     }
 
-    private static string BuildFullHtml(string title, string spaceName, string content, string attachmentsSection)
+    private static string BuildFullHtml(string title, string spaceName, string content, string attachmentsSection, PageMetadata metadata)
     {
         var encodedTitle = WebUtility.HtmlEncode(title);
         var encodedSpace = WebUtility.HtmlEncode(spaceName);
         var exportDate = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+
+        var creator = WebUtility.HtmlEncode(metadata.CreatorName ?? "Unknown");
+        var contributors = metadata.Contributors.Count > 0
+            ? WebUtility.HtmlEncode(string.Join(", ", metadata.Contributors))
+            : "None";
+        var createdDate = metadata.CreatedDate?.LocalDateTime.ToString("yyyy-MM-dd HH:mm:ss") ?? "Unknown";
+        var updates = metadata.VersionNumber.ToString();
+        var lastUpdated = metadata.LastUpdatedDate?.LocalDateTime.ToString("yyyy-MM-dd HH:mm:ss") ?? "Unknown";
+        var views = metadata.ViewCount?.ToString("N0") ?? "N/A";
+
         return $"""
             <!DOCTYPE html>
             <html>
@@ -66,6 +77,12 @@ public sealed class WordExporter
             <body>
               <p><strong>Space:</strong> {encodedSpace}</p>
               <p><strong>Title:</strong> {encodedTitle}</p>
+              <p><strong>Creator:</strong> {creator}</p>
+              <p><strong>Contributors:</strong> {contributors}</p>
+              <p><strong>Created:</strong> {createdDate}</p>
+              <p><strong>Updates:</strong> {updates}</p>
+              <p><strong>Last Updated:</strong> {lastUpdated}</p>
+              <p><strong>Views:</strong> {views}</p>
               <p><strong>Exported:</strong> {exportDate}</p>
               <hr>
               <h1>{encodedTitle}</h1>
@@ -129,7 +146,7 @@ public sealed class WordExporter
 
         var dir = Path.Combine(
             Path.GetDirectoryName(docPath) ?? ".",
-            Path.GetFileNameWithoutExtension(docPath) + "_attachments");
+            Path.GetFileNameWithoutExtension(docPath) + "_att");
 
         Directory.CreateDirectory(dir);
         Log.Debug($"Saving {attachments.Count} attachment(s) to {dir}");

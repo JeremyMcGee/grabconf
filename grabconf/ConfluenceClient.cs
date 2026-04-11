@@ -92,15 +92,85 @@ public sealed class ConfluenceClient : IDisposable
         return json.GetProperty("name").GetString() ?? spaceKey;
     }
 
-    public async Task<string> GetPageContentAsync(string pageId, CancellationToken ct = default)
+    public async Task<PageContent> GetPageContentAsync(string pageId, CancellationToken ct = default)
     {
-        var url = $"rest/api/content/{Uri.EscapeDataString(pageId)}?expand=body.export_view";
+        var url = $"rest/api/content/{Uri.EscapeDataString(pageId)}?expand=body.export_view,version,history,history.contributors.publishers";
         var json = await GetJsonAsync(url, ct);
 
-        return json.GetProperty("body")
-                    .GetProperty("export_view")
-                    .GetProperty("value")
-                    .GetString() ?? "";
+        var html = json.GetProperty("body")
+                       .GetProperty("export_view")
+                       .GetProperty("value")
+                       .GetString() ?? "";
+
+        string? creatorName = null;
+        DateTimeOffset? createdDate = null;
+        if (json.TryGetProperty("history", out var history))
+        {
+            if (history.TryGetProperty("createdBy", out var createdBy) &&
+                createdBy.TryGetProperty("displayName", out var creatorProp))
+            {
+                creatorName = creatorProp.GetString();
+            }
+
+            if (history.TryGetProperty("createdDate", out var createdDateProp) &&
+                DateTimeOffset.TryParse(createdDateProp.GetString(), out var parsedCreated))
+            {
+                createdDate = parsedCreated;
+            }
+        }
+
+        var contributors = new List<string>();
+        if (json.TryGetProperty("history", out var hist) &&
+            hist.TryGetProperty("contributors", out var contribs) &&
+            contribs.TryGetProperty("publishers", out var publishers) &&
+            publishers.TryGetProperty("users", out var users))
+        {
+            foreach (var user in users.EnumerateArray())
+            {
+                if (user.TryGetProperty("displayName", out var nameProp))
+                {
+                    var name = nameProp.GetString();
+                    if (name is not null)
+                        contributors.Add(name);
+                }
+            }
+        }
+
+        var versionNumber = 1;
+        DateTimeOffset? lastUpdatedDate = null;
+        if (json.TryGetProperty("version", out var version))
+        {
+            if (version.TryGetProperty("number", out var numProp))
+                versionNumber = numProp.GetInt32();
+
+            if (version.TryGetProperty("when", out var whenProp) &&
+                DateTimeOffset.TryParse(whenProp.GetString(), out var parsedWhen))
+            {
+                lastUpdatedDate = parsedWhen;
+            }
+        }
+
+        Log.Debug($"Page metadata — creator: {creatorName ?? "unknown"}, contributors: {contributors.Count}, version: {versionNumber}");
+
+        var metadata = new PageMetadata(creatorName, contributors, createdDate, versionNumber, lastUpdatedDate, ViewCount: null);
+        return new PageContent(html, metadata);
+    }
+
+    public async Task<long?> GetPageViewCountAsync(string pageId, CancellationToken ct = default)
+    {
+        try
+        {
+            var url = $"rest/api/analytics/content/{Uri.EscapeDataString(pageId)}/views?fromDate=2000-01-01";
+            var json = await GetJsonAsync(url, ct);
+            if (json.TryGetProperty("count", out var countProp))
+                return countProp.GetInt64();
+            return null;
+        }
+        catch
+        {
+            Log.Debug($"View count not available for page {pageId} (analytics API may not be supported).");
+            return null;
+        }
     }
 
     public async Task<List<AttachmentInfo>> GetAttachmentsAsync(string pageId, CancellationToken ct = default)
