@@ -131,9 +131,9 @@ static string SanitizeName(string name, int maxLength)
     return $"{sanitized[..prefixLength]}_{hash}";
 }
 
-static string SanitizeFileName(string name) => SanitizeName(name, maxLength: 20);
+static string SanitizeFileName(string name) => SanitizeName(name, maxLength: 30);
 
-static string SanitizeFolderName(string name) => SanitizeName(name, maxLength: 10);
+static string SanitizeFolderName(string name) => SanitizeName(name, maxLength: 20);
 
 static string BuildPageDirectory(string outputDir, IReadOnlyList<string> ancestorTitles)
 {
