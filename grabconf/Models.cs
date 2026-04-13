@@ -8,9 +8,7 @@ public sealed record CommandLineOptions(
     string OutputDir,
     int MaxRequestsPerSecond,
     string? ManifestPath,
-    bool Verbose,
-    string? LabelId,
-    string? TenantId);
+    bool Verbose);
 
 public sealed record PageInfo(string Id, string Title, IReadOnlyList<string> AncestorTitles);
 
