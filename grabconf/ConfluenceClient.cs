@@ -109,7 +109,7 @@ public sealed class ConfluenceClient : IDisposable
             if (history.TryGetProperty("createdBy", out var createdBy) &&
                 createdBy.TryGetProperty("displayName", out var creatorProp))
             {
-                creatorName = creatorProp.GetString();
+                creatorName = CleanDisplayName(creatorProp.GetString());
             }
 
             if (history.TryGetProperty("createdDate", out var createdDateProp) &&
@@ -129,7 +129,7 @@ public sealed class ConfluenceClient : IDisposable
             {
                 if (user.TryGetProperty("displayName", out var nameProp))
                 {
-                    var name = nameProp.GetString();
+                    var name = CleanDisplayName(nameProp.GetString());
                     if (name is not null)
                         contributors.Add(name);
                 }
@@ -240,6 +240,9 @@ public sealed class ConfluenceClient : IDisposable
         response.EnsureSuccessStatusCode();
         return await response.Content.ReadFromJsonAsync<JsonElement>(JsonOptions, ct);
     }
+
+    private static string? CleanDisplayName(string? name) =>
+        name?.Replace("(Unlicensed)", "", StringComparison.OrdinalIgnoreCase).Trim();
 
     private async Task ThrottleAsync(CancellationToken ct)
     {

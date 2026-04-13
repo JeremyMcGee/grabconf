@@ -1,6 +1,8 @@
 using System.Text.RegularExpressions;
 using DocumentFormat.OpenXml;
+using DocumentFormat.OpenXml.CustomProperties;
 using DocumentFormat.OpenXml.Packaging;
+using DocumentFormat.OpenXml.VariantTypes;
 using DocumentFormat.OpenXml.Wordprocessing;
 using HtmlToOpenXml;
 
@@ -21,9 +23,15 @@ public sealed class WordExporter
 
         Log.Debug($"Writing .docx to {outputPath}...");
         using var doc = WordprocessingDocument.Create(outputPath, WordprocessingDocumentType.Document);
+
+        SetDocumentProperties(doc, title, spaceName, metadata);
+        SetSensitivityLabel(doc, "Public");
+
         var mainPart = doc.AddMainDocumentPart();
         mainPart.Document = new Document(new Body());
         var body = mainPart.Document.Body!;
+
+        AddPageHeader(mainPart, body, "Public");
 
         AddMetadataHeader(body, title, spaceName, metadata);
 
@@ -48,6 +56,68 @@ public sealed class WordExporter
         mainPart.Document.Save();
 
         SaveAttachments(outputPath, attachments);
+    }
+
+    private static void SetDocumentProperties(WordprocessingDocument doc, string title, string spaceName, PageMetadata metadata)
+    {
+        var props = doc.PackageProperties;
+        props.Title = title;
+        props.Subject = spaceName;
+        props.Creator = metadata.CreatorName;
+        props.Created = metadata.CreatedDate?.UtcDateTime;
+        props.Modified = metadata.LastUpdatedDate?.UtcDateTime;
+        props.LastModifiedBy = metadata.Contributors.Count > 0 ? metadata.Contributors[^1] : metadata.CreatorName;
+        props.Keywords = $"Confluence, {spaceName}";
+        props.Description = $"Exported from Confluence space '{spaceName}' — version {metadata.VersionNumber}";
+        Log.Debug($"Document properties set — author: {props.Creator ?? "unknown"}, created: {props.Created}, modified: {props.Modified}");
+    }
+
+    private static void SetSensitivityLabel(WordprocessingDocument doc, string label)
+    {
+        doc.PackageProperties.ContentStatus = label;
+
+        var customProps = doc.AddCustomFilePropertiesPart();
+        customProps.Properties = new DocumentFormat.OpenXml.CustomProperties.Properties(
+            new CustomDocumentProperty
+            {
+                FormatId = "{D5CDD505-2E9C-101B-9397-08002B2CF9AE}",
+                PropertyId = 2,
+                Name = "Sensitivity",
+                VTLPWSTR = new VTLPWSTR(label)
+            });
+
+        Log.Debug($"Sensitivity label set to '{label}'.");
+    }
+
+    private static void AddPageHeader(MainDocumentPart mainPart, Body body, string label)
+    {
+        var headerPart = mainPart.AddNewPart<HeaderPart>();
+        var headerPartId = mainPart.GetIdOfPart(headerPart);
+
+        headerPart.Header = new Header(
+            new Paragraph(
+                new ParagraphProperties(
+                    new Justification { Val = JustificationValues.Center }),
+                new Run(
+                    new RunProperties(
+                        new Bold(),
+                        new FontSize { Val = "18" },
+                        new Color { Val = "4472C4" }),
+                    new Text(label))));
+        headerPart.Header.Save();
+
+        var sectionProps = body.GetFirstChild<SectionProperties>();
+        if (sectionProps is null)
+        {
+            sectionProps = new SectionProperties();
+            body.AppendChild(sectionProps);
+        }
+
+        sectionProps.PrependChild(new HeaderReference
+        {
+            Type = HeaderFooterValues.Default,
+            Id = headerPartId
+        });
     }
 
     private static void AddMetadataHeader(Body body, string title, string spaceName, PageMetadata metadata)
