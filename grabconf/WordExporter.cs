@@ -1,9 +1,8 @@
-using System.Net;
-using System.Text;
 using System.Text.RegularExpressions;
 using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Wordprocessing;
+using HtmlToOpenXml;
 
 namespace GrabConf;
 
@@ -20,96 +19,108 @@ public sealed class WordExporter
         Log.Debug($"Processing HTML images for '{title}'...");
         var processedHtml = ProcessHtmlImages(htmlContent, attachments);
 
+        Log.Debug($"Writing .docx to {outputPath}...");
+        using var doc = WordprocessingDocument.Create(outputPath, WordprocessingDocumentType.Document);
+        var mainPart = doc.AddMainDocumentPart();
+        mainPart.Document = new Document(new Body());
+        var body = mainPart.Document.Body!;
+
+        AddMetadataHeader(body, title, spaceName, metadata);
+
+        body.AppendChild(CreateHorizontalRule());
+
+        Log.Debug($"Converting HTML body ({processedHtml.Length:N0} chars) to Open XML...");
+        var converter = new HtmlConverter(mainPart);
+        var paragraphs = converter.Parse(processedHtml);
+        foreach (var element in paragraphs)
+            body.AppendChild(element);
+
         var nonImageAttachments = attachments
             .Where(a => !a.MediaType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
             .ToList();
 
-        var attachmentsFolderName = Path.GetFileNameWithoutExtension(outputPath) + "_att";
-        var attachmentsSection = BuildAttachmentsHtml(nonImageAttachments, attachmentsFolderName);
-
-        var fullHtml = BuildFullHtml(title, spaceName, processedHtml, attachmentsSection, metadata);
-        Log.Debug($"Final HTML size: {fullHtml.Length:N0} characters");
-
-        Log.Debug($"Writing .docx to {outputPath}...");
-        using var doc = WordprocessingDocument.Create(outputPath, WordprocessingDocumentType.Document);
-        var mainPart = doc.AddMainDocumentPart();
-
-        const string altChunkId = "pageContent";
-        var chunk = mainPart.AddAlternativeFormatImportPart(
-            AlternativeFormatImportPartType.Html, altChunkId);
-
-        using (var stream = new MemoryStream(Encoding.UTF8.GetBytes(fullHtml)))
+        if (nonImageAttachments.Count > 0)
         {
-            chunk.FeedData(stream);
+            var folderName = Path.GetFileNameWithoutExtension(outputPath) + "_att";
+            AddAttachmentsSection(body, nonImageAttachments, folderName);
         }
-
-        mainPart.Document = new Document(
-            new Body(
-                new AltChunk { Id = altChunkId }));
 
         mainPart.Document.Save();
 
         SaveAttachments(outputPath, attachments);
     }
 
-    private static string BuildFullHtml(string title, string spaceName, string content, string attachmentsSection, PageMetadata metadata)
+    private static void AddMetadataHeader(Body body, string title, string spaceName, PageMetadata metadata)
     {
-        var encodedTitle = WebUtility.HtmlEncode(title);
-        var encodedSpace = WebUtility.HtmlEncode(spaceName);
         var exportDate = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
-
-        var creator = WebUtility.HtmlEncode(metadata.CreatorName ?? "Unknown");
+        var creator = metadata.CreatorName ?? "Unknown";
         var contributors = metadata.Contributors.Count > 0
-            ? WebUtility.HtmlEncode(string.Join(", ", metadata.Contributors))
+            ? string.Join(", ", metadata.Contributors)
             : "None";
         var createdDate = metadata.CreatedDate?.LocalDateTime.ToString("yyyy-MM-dd HH:mm:ss") ?? "Unknown";
         var updates = metadata.VersionNumber.ToString();
         var lastUpdated = metadata.LastUpdatedDate?.LocalDateTime.ToString("yyyy-MM-dd HH:mm:ss") ?? "Unknown";
         var views = metadata.ViewCount?.ToString("N0") ?? "N/A";
 
-        return $"""
-            <!DOCTYPE html>
-            <html>
-            <head>
-              <meta charset="utf-8">
-              <title>{encodedTitle}</title>
-            </head>
-            <body>
-              <p><strong>Space:</strong> {encodedSpace}</p>
-              <p><strong>Title:</strong> {encodedTitle}</p>
-              <p><strong>Creator:</strong> {creator}</p>
-              <p><strong>Contributors:</strong> {contributors}</p>
-              <p><strong>Created:</strong> {createdDate}</p>
-              <p><strong>Updates:</strong> {updates}</p>
-              <p><strong>Last Updated:</strong> {lastUpdated}</p>
-              <p><strong>Views:</strong> {views}</p>
-              <p><strong>Exported:</strong> {exportDate}</p>
-              <hr>
-              <h1>{encodedTitle}</h1>
-              {content}
-              {attachmentsSection}
-            </body>
-            </html>
-            """;
+        AddMetadataLine(body, "Space", spaceName);
+        AddMetadataLine(body, "Title", title);
+        AddMetadataLine(body, "Creator", creator);
+        AddMetadataLine(body, "Contributors", contributors);
+        AddMetadataLine(body, "Created", createdDate);
+        AddMetadataLine(body, "Updates", updates);
+        AddMetadataLine(body, "Last Updated", lastUpdated);
+        AddMetadataLine(body, "Views", views);
+        AddMetadataLine(body, "Exported", exportDate);
     }
 
-    private static string BuildAttachmentsHtml(
-        List<DownloadedAttachment> nonImageAttachments,
-        string folderName)
+    private static void AddMetadataLine(Body body, string label, string value)
     {
-        if (nonImageAttachments.Count == 0)
-            return "";
+        var paragraph = new Paragraph();
+        paragraph.AppendChild(new Run(
+            new RunProperties(new Bold()),
+            new Text(label + ": ") { Space = SpaceProcessingModeValues.Preserve }));
+        paragraph.AppendChild(new Run(
+            new Text(value)));
+        body.AppendChild(paragraph);
+    }
 
-        var items = new StringBuilder();
-        foreach (var att in nonImageAttachments)
-            items.Append($"<li>{WebUtility.HtmlEncode(att.FileName)}</li>");
+    private static Paragraph CreateHorizontalRule()
+    {
+        return new Paragraph(
+            new ParagraphProperties(
+                new ParagraphBorders(
+                    new BottomBorder
+                    {
+                        Val = BorderValues.Single,
+                        Size = 6,
+                        Space = 1,
+                        Color = "auto"
+                    })));
+    }
 
-        return $"""
-            <hr>
-            <h2>Attachments</h2>
-            <ul>{items}</ul>
-            <p><em>Files saved to: {WebUtility.HtmlEncode(folderName)}/</em></p>
-            """;
+    private static void AddAttachmentsSection(Body body, List<DownloadedAttachment> attachments, string folderName)
+    {
+        body.AppendChild(CreateHorizontalRule());
+
+        body.AppendChild(new Paragraph(
+            new ParagraphProperties(
+                new ParagraphStyleId { Val = "Heading2" }),
+            new Run(new Text("Attachments"))));
+
+        foreach (var att in attachments)
+        {
+            body.AppendChild(new Paragraph(
+                new ParagraphProperties(
+                    new NumberingProperties(
+                        new NumberingLevelReference { Val = 0 },
+                        new NumberingId { Val = 1 })),
+                new Run(new Text(att.FileName))));
+        }
+
+        body.AppendChild(new Paragraph(
+            new Run(
+                new RunProperties(new Italic()),
+                new Text($"Files saved to: {folderName}/"))));
     }
 
     private static string ProcessHtmlImages(string html, List<DownloadedAttachment> attachments)
