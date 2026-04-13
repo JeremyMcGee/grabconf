@@ -46,6 +46,7 @@ Directory.CreateDirectory(options.OutputDir);
 Log.Debug($"Output directory created/verified: {Path.GetFullPath(options.OutputDir)}");
 
 var exported = 0;
+var pageTitles = new Dictionary<string, string>();
 foreach (var page in pages)
 {
     AnsiConsole.MarkupLine($"[bold][[{++exported}/{pages.Count}]][/] {page.Title.EscapeMarkup()}");
@@ -90,6 +91,7 @@ foreach (var page in pages)
         var docPath = Path.Combine(pageDir, $"{safeTitle}.html");
         Log.Debug($"Creating document: {docPath}");
         exporter.Export(docPath, page.Title, spaceName, pageContent.Html, downloaded, metadata);
+        pageTitles[Path.GetFullPath(docPath)] = page.Title;
         Log.Success($"Saved: {docPath}");
     }
     catch (HttpRequestException ex)
@@ -107,6 +109,10 @@ foreach (var page in pages)
 AnsiConsole.Write(new Rule().RuleStyle("green"));
 Log.Success($"Export complete. {exported} page(s) processed.");
 
+Log.Info("Generating index files...");
+HtmlExporter.GenerateIndexFiles(options.OutputDir, spaceName, pageTitles);
+Log.Success("Index files generated.");
+
 if (tracker is not null && options.ManifestPath is not null)
 {
     tracker.WriteManifest(options.ManifestPath, options.BaseUrl, options.SpaceKey);
@@ -120,18 +126,28 @@ static string SanitizeName(string name, int maxLength)
     const int hashLength = 4;
     var prefixLength = maxLength - hashLength - 1;
 
-    var invalid = Path.GetInvalidFileNameChars();
-    var sanitized = string.Concat(name.Select(c => invalid.Contains(c) ? '_' : c));
+    var sb = new StringBuilder(name.Length);
+    foreach (var c in name)
+    {
+        if (char.IsLetterOrDigit(c))
+            sb.Append(c);
+        else if (sb.Length > 0 && sb[sb.Length - 1] != '-')
+            sb.Append('-');
+    }
+
+    var sanitized = sb.ToString().Trim('-');
+    if (sanitized.Length == 0)
+        sanitized = "page";
 
     if (sanitized.Length <= maxLength)
-        return sanitized.TrimEnd('.');
+        return sanitized;
 
     var hash = Convert.ToHexStringLower(
-        SHA256.HashData(Encoding.UTF8.GetBytes(sanitized)))[..hashLength];
-    return $"{sanitized[..prefixLength]}_{hash}".TrimEnd('.');
+        SHA256.HashData(Encoding.UTF8.GetBytes(name)))[..hashLength];
+    return $"{sanitized[..prefixLength]}_{hash}";
 }
 
-static string SanitizeFileName(string name) => SanitizeName(name, maxLength: 30);
+static string SanitizeFileName(string name) => SanitizeName(name, maxLength: 40);
 
 static string SanitizeFolderName(string name) => SanitizeName(name, maxLength: 30);
 
