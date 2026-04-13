@@ -124,16 +124,16 @@ static string SanitizeName(string name, int maxLength)
     var sanitized = string.Concat(name.Select(c => invalid.Contains(c) ? '_' : c));
 
     if (sanitized.Length <= maxLength)
-        return sanitized;
+        return sanitized.TrimEnd('.');
 
     var hash = Convert.ToHexStringLower(
         SHA256.HashData(Encoding.UTF8.GetBytes(sanitized)))[..hashLength];
-    return $"{sanitized[..prefixLength]}_{hash}";
+    return $"{sanitized[..prefixLength]}_{hash}".TrimEnd('.');
 }
 
 static string SanitizeFileName(string name) => SanitizeName(name, maxLength: 30);
 
-static string SanitizeFolderName(string name) => SanitizeName(name, maxLength: 20);
+static string SanitizeFolderName(string name) => SanitizeName(name, maxLength: 30);
 
 static string BuildPageDirectory(string outputDir, IReadOnlyList<string> ancestorTitles)
 {
