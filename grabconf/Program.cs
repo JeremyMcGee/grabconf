@@ -89,7 +89,7 @@ foreach (var page in pages)
         var safeTitle = SanitizeFileName(page.Title);
         var docPath = Path.Combine(pageDir, $"{safeTitle}.docx");
         Log.Debug($"Creating document: {docPath}");
-        exporter.Export(docPath, page.Title, spaceName, pageContent.Html, downloaded, metadata);
+        exporter.Export(docPath, page.Title, spaceName, pageContent.Html, downloaded, metadata, options.LabelId, options.TenantId);
         Log.Success($"Saved: {docPath}");
     }
     catch (HttpRequestException ex)
@@ -162,7 +162,10 @@ static void PrintUsage()
           --output    Output directory (default: ./output)
           --rate      Max requests per second (default: 5)
           --manifest  Write a plain-text manifest of external Confluence site
-                      references to the given path (e.g. ./output/manifest.txt)
+                       references to the given path (e.g. ./output/manifest.txt)
+          --label-id  Microsoft Purview sensitivity label GUID for "Public".
+                       Used with --tenant-id to stamp MIP sensitivity labels.
+          --tenant-id Microsoft Entra tenant ID (GUID) for sensitivity labels.
           --verbose, -v  Enable verbose/debug logging
           --help, -h  Show this help
         """);
@@ -171,6 +174,7 @@ static void PrintUsage()
 static CommandLineOptions? ParseArgs(string[] args)
 {
     string? url = null, space = null, token = null, user = null, manifest = null;
+    string? labelId = null, tenantId = null;
     var output = "./output";
     var rate = 5;
     var verbose = false;
@@ -204,6 +208,12 @@ static CommandLineOptions? ParseArgs(string[] args)
                     return null;
                 }
                 break;
+            case "--label-id" when i + 1 < args.Length:
+                labelId = args[++i];
+                break;
+            case "--tenant-id" when i + 1 < args.Length:
+                tenantId = args[++i];
+                break;
             case "--verbose" or "-v":
                 verbose = true;
                 break;
@@ -221,5 +231,11 @@ static CommandLineOptions? ParseArgs(string[] args)
         return null;
     }
 
-    return new CommandLineOptions(url, space, user, token, output, rate, manifest, verbose);
+    if ((labelId is not null) != (tenantId is not null))
+    {
+        Console.Error.WriteLine("Error: --label-id and --tenant-id must be specified together.");
+        return null;
+    }
+
+    return new CommandLineOptions(url, space, user, token, output, rate, manifest, verbose, labelId, tenantId);
 }

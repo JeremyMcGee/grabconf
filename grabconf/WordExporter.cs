@@ -16,7 +16,9 @@ public sealed class WordExporter
         string spaceName,
         string htmlContent,
         List<DownloadedAttachment> attachments,
-        PageMetadata metadata)
+        PageMetadata metadata,
+        string? labelId = null,
+        string? tenantId = null)
     {
         Log.Debug($"Processing HTML images for '{title}'...");
         var processedHtml = ProcessHtmlImages(htmlContent, attachments);
@@ -25,7 +27,7 @@ public sealed class WordExporter
         using var doc = WordprocessingDocument.Create(outputPath, WordprocessingDocumentType.Document);
 
         SetDocumentProperties(doc, title, spaceName, metadata);
-        SetSensitivityLabel(doc, "Public");
+        SetSensitivityLabel(doc, "Public", labelId, tenantId);
 
         var mainPart = doc.AddMainDocumentPart();
         mainPart.Document = new Document(new Body());
@@ -72,22 +74,56 @@ public sealed class WordExporter
         Log.Debug($"Document properties set — author: {props.Creator ?? "unknown"}, created: {props.Created}, modified: {props.Modified}");
     }
 
-    private static void SetSensitivityLabel(WordprocessingDocument doc, string label)
+    private static void SetSensitivityLabel(WordprocessingDocument doc, string label, string? labelId, string? tenantId)
     {
         doc.PackageProperties.ContentStatus = label;
 
-        var customProps = doc.AddCustomFilePropertiesPart();
-        customProps.Properties = new DocumentFormat.OpenXml.CustomProperties.Properties(
-            new CustomDocumentProperty
+        var propertyId = 2;
+        var properties = new List<CustomDocumentProperty>
+        {
+            new()
             {
                 FormatId = "{D5CDD505-2E9C-101B-9397-08002B2CF9AE}",
-                PropertyId = 2,
+                PropertyId = propertyId++,
                 Name = "Sensitivity",
                 VTLPWSTR = new VTLPWSTR(label)
-            });
+            }
+        };
 
-        Log.Debug($"Sensitivity label set to '{label}'.");
+        if (labelId is not null && tenantId is not null)
+        {
+            var setDate = DateTime.UtcNow.ToString("O");
+            var actionId = Guid.NewGuid().ToString();
+
+            properties.AddRange([
+                MsipProperty(ref propertyId, labelId, "Enabled", "true"),
+                MsipProperty(ref propertyId, labelId, "SetDate", setDate),
+                MsipProperty(ref propertyId, labelId, "Method", "Privileged"),
+                MsipProperty(ref propertyId, labelId, "Name", label),
+                MsipProperty(ref propertyId, labelId, "SiteId", tenantId),
+                MsipProperty(ref propertyId, labelId, "ActionId", actionId),
+                MsipProperty(ref propertyId, labelId, "ContentBits", "0")
+            ]);
+
+            Log.Debug($"MIP sensitivity label applied — labelId: {labelId}, tenantId: {tenantId}");
+        }
+        else
+        {
+            Log.Debug("Sensitivity custom property set (no MIP label — provide --label-id and --tenant-id for full MIP support).");
+        }
+
+        var customProps = doc.AddCustomFilePropertiesPart();
+        customProps.Properties = new DocumentFormat.OpenXml.CustomProperties.Properties([.. properties]);
     }
+
+    private static CustomDocumentProperty MsipProperty(ref int propertyId, string labelId, string suffix, string value) =>
+        new()
+        {
+            FormatId = "{D5CDD505-2E9C-101B-9397-08002B2CF9AE}",
+            PropertyId = propertyId++,
+            Name = $"MSIP_Label_{labelId}_{suffix}",
+            VTLPWSTR = new VTLPWSTR(value)
+        };
 
     private static void AddPageHeader(MainDocumentPart mainPart, Body body, string label)
     {
