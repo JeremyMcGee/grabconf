@@ -28,7 +28,7 @@ if (options.ManifestPath is not null)
 using var client = new ConfluenceClient(
     options.BaseUrl, options.User, options.Token, options.MaxRequestsPerSecond);
 
-var exporter = new MarkdownExporter();
+var exporter = new HtmlExporter();
 var tracker = options.ManifestPath is not null
     ? new ExternalSiteTracker(options.BaseUrl)
     : null;
@@ -87,7 +87,7 @@ foreach (var page in pages)
         Directory.CreateDirectory(pageDir);
 
         var safeTitle = SanitizeFileName(page.Title);
-        var docPath = Path.Combine(pageDir, $"{safeTitle}.md");
+        var docPath = Path.Combine(pageDir, $"{safeTitle}.html");
         Log.Debug($"Creating document: {docPath}");
         exporter.Export(docPath, page.Title, spaceName, pageContent.Html, downloaded, metadata);
         Log.Success($"Saved: {docPath}");
@@ -146,7 +146,7 @@ static string BuildPageDirectory(string outputDir, IReadOnlyList<string> ancesto
 static void PrintUsage()
 {
     Console.WriteLine("""
-        grabconf - Export a Confluence space to Markdown
+        grabconf - Export a Confluence space to HTML
 
         Usage:
           grabconf --url <base-url> --space <space-key> --token <api-token> [options]
