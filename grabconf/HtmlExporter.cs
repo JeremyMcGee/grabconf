@@ -36,6 +36,11 @@ public sealed class HtmlExporter
         ["ol"] = new(StringComparer.OrdinalIgnoreCase) { "start", "type" },
     };
 
+    private static readonly HashSet<string> RemoveTags = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "style", "script", "link", "noscript", "svg", "math", "template",
+    };
+
     public void Export(
         string outputPath,
         string title,
@@ -272,6 +277,9 @@ public sealed class HtmlExporter
         var doc = parser.ParseDocument($"<body>{rawHtml}</body>");
         var body = doc.Body!;
 
+        foreach (var node in body.Descendents().OfType<IComment>().ToList())
+            node.Remove();
+
         CleanElement(body);
 
         return body.InnerHtml.Trim();
@@ -288,7 +296,11 @@ public sealed class HtmlExporter
         if (element.LocalName.Equals("body", StringComparison.OrdinalIgnoreCase))
             return;
 
-        if (SemanticTags.Contains(element.LocalName))
+        if (RemoveTags.Contains(element.LocalName))
+        {
+            element.Remove();
+        }
+        else if (SemanticTags.Contains(element.LocalName))
         {
             // Keep the element but strip non-safe attributes.
             SafeAttributes.TryGetValue(element.LocalName, out var allowed);
