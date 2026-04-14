@@ -107,13 +107,6 @@ public sealed class HtmlExporter
         sb.AppendLine("<meta charset=\"utf-8\">");
         sb.AppendLine($"<title>{Encode(heading)}</title>");
         sb.AppendLine("<meta name=\"generator\" content=\"grabconf\">");
-        sb.AppendLine("<style>");
-        sb.AppendLine("  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 960px; margin: 2em auto; padding: 0 1em; }");
-        sb.AppendLine("  ul { list-style: none; padding: 0; }");
-        sb.AppendLine("  li { padding: 0.3em 0; }");
-        sb.AppendLine("  a { text-decoration: none; color: #0366d6; }");
-        sb.AppendLine("  a:hover { text-decoration: underline; }");
-        sb.AppendLine("</style>");
         sb.AppendLine("</head>");
         sb.AppendLine("<body>");
         sb.AppendLine($"<h1>{Encode(heading)}</h1>");
@@ -170,15 +163,6 @@ public sealed class HtmlExporter
         if (metadata.LastUpdatedDate.HasValue)
             sb.AppendLine($"<meta name=\"last-modified\" content=\"{metadata.LastUpdatedDate.Value.UtcDateTime:yyyy-MM-dd}\">");
         sb.AppendLine($"<meta name=\"generator\" content=\"grabconf\">");
-        sb.AppendLine("<style>");
-        sb.AppendLine("  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 960px; margin: 2em auto; padding: 0 1em; }");
-        sb.AppendLine("  header { border-bottom: 1px solid #ccc; padding-bottom: 1em; margin-bottom: 2em; }");
-        sb.AppendLine("  header h1 { margin-bottom: 0.25em; }");
-        sb.AppendLine("  .metadata { font-size: 0.9em; color: #555; }");
-        sb.AppendLine("  .metadata dt { font-weight: bold; display: inline; }");
-        sb.AppendLine("  .metadata dd { display: inline; margin: 0 1.5em 0 0; }");
-        sb.AppendLine("  footer { border-top: 1px solid #ccc; padding-top: 1em; margin-top: 2em; font-size: 0.9em; color: #555; }");
-        sb.AppendLine("</style>");
         sb.AppendLine("</head>");
     }
 
@@ -196,7 +180,7 @@ public sealed class HtmlExporter
 
         sb.AppendLine("<header>");
         sb.AppendLine($"<h1>{Encode(title)}</h1>");
-        sb.AppendLine("<dl class=\"metadata\">");
+        sb.AppendLine("<dl>");
         AppendDt(sb, "Space", spaceName);
         AppendDt(sb, "Creator", creator);
         AppendDt(sb, "Contributors", contributors);
